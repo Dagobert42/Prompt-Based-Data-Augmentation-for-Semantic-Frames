@@ -1,5 +1,5 @@
 import torch
-import eval
+import evaluation
 from tqdm import tqdm
 import numpy as np
 from IPython.display import clear_output
@@ -82,7 +82,7 @@ def get_trainer(
         eval_dataset=val_data,
         data_collator=data_collator,
         tokenizer=tokenizer,
-        compute_metrics=eval.compute_metrics
+        compute_metrics=evaluation.compute_metrics
     )
 
 def record_evaluation(trainer, test_data, train_log, at_samples):

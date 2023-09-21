@@ -136,7 +136,7 @@ def main():
         model,
         data_collator=data_collator,
         tokenizer=tokenizer,
-        compute_metrics=eval.compute_metrics
+        compute_metrics=evaluation.compute_metrics
     )
 
     eval_log = {}
