@@ -1,0 +1,8 @@
+__pycache__
+api_key
+org_key
+.DS_Store
+tb_logs
+relation_extractions
+logs
+augmentations
