@@ -3,7 +3,7 @@ import evaluate
 import warnings
 from helpers.setup import *
 from sklearn import metrics
-from transformers import AutoTokenizer, DataCollatorForTokenClassification
+from transformers import AutoTokenizer, DataCollatorForTokenClassification, TrainingArguments, Trainer
 from data.datasets import TokenClassificationDataset
 import matplotlib.pyplot as plt
 from scipy.special import softmax
@@ -95,10 +95,25 @@ def get_predictions(trainer, samples, label_list):
     return logits, id_predictions, id_labels, real_predictions, real_labels
 
 
+def evaluate_sequence_classfication(p):
+    logits, labels, _ = p
+    preds = np.argmax(logits, axis=1)
+    results_pre = pre_metric.compute(predictions=preds, references=labels)
+    results_rec = rec_metric.compute(predictions=preds, references=labels)
+    results_f1 = f1_metric.compute(predictions=preds, references=labels)
+    results_acc = acc_metric.compute(predictions=preds, references=labels)
+    return {
+        'precision' : np.round(results_pre['precision'], 4),
+        'recall' : np.round(results_rec['recall'], 4),
+        'f1' : np.round(results_f1['f1'], 4),
+        'accuracy' : np.round(results_acc['accuracy'], 4),
+    }
+
 def main():
-    parser = argparse.ArgumentParser(description="Baseline Model Training")
+    parser = argparse.ArgumentParser(description="Model Evaluation")
 
     parser.add_argument("--model", required=True, help="Name or path of the initial Hugging Face model to load")
+    parser.add_argument("--is_local", type=bool, help="Whether to load the model from file or Huggingface", action=argparse.BooleanOptionalAction)
     parser.add_argument("--out_path", required=True, help="Path for the trained model to save weights and logs")
     parser.add_argument("--data_path", required=True, help="Path to the data.pt files")
     parser.add_argument("--max_input_length", type=int, required=False, help="Max number of tokens in a sequence", default=300)
@@ -115,32 +130,27 @@ def main():
         add_prefix_space=True
         )
     
-    with open(args.data_path+"label_list.pt", 'rb') as f:
-        label_list = torch.load(f)
-    label_dict = {l: i for i, l in enumerate(label_list)}
+    with open(args.data_path, 'rb') as f:
+        splits = torch.load(f)
 
-    with open(args.data_path+"test_data.pt", 'rb') as f:
-        X_test, y_test = torch.load(f)
-    test_data = TokenClassificationDataset(
-        X_test,
-        y_test,
-        label_dict,
+    _, _, test_data, label_dict = unpack_splits(
+        splits,
         tokenizer,
         args.max_input_length
-        )
+    )
     
-    model = get_model(args.model, label_list, label_dict)
+    model = get_token_classifier(args.model, label_dict, args.is_local)
     data_collator = DataCollatorForTokenClassification(tokenizer)
-    args = TrainingArguments(per_device_eval_batch_size=args.batch_size)
+    train_args = TrainingArguments(args.out_path, per_device_eval_batch_size=args.batch_size)
     trainer = Trainer(
         model,
+        train_args,
         data_collator=data_collator,
         tokenizer=tokenizer,
-        compute_metrics=evaluation.compute_metrics
+        compute_metrics=compute_metrics
     )
 
     eval_log = {}
-
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         (
@@ -149,7 +159,7 @@ def main():
             id_labels,
             real_predictions,
             real_labels
-        ) = get_predictions(trainer, test_data, label_list)
+        ) = get_predictions(trainer, test_data, splits['label_list'])
     
     flat_id_preds = [i for m in id_predictions for i in m]
     flat_id_labels = [j for n in id_labels for j in n]
@@ -165,29 +175,26 @@ def main():
 
     flat_real_predictions = [i for m in real_predictions for i in m]
     flat_real_labels = [j for n in real_labels for j in n]
-    cm_recall = metrics.confusion_matrix(flat_real_labels, flat_real_predictions, labels=label_list, normalize="true")
-    cm_precision = metrics.confusion_matrix(flat_real_labels, flat_real_predictions, labels=label_list, normalize="pred")
+    cm_recall = metrics.confusion_matrix(flat_real_labels, flat_real_predictions, labels=splits['label_list'], normalize="true")
+    cm_precision = metrics.confusion_matrix(flat_real_labels, flat_real_predictions, labels=splits['label_list'], normalize="pred")
     eval_log['cm_recall'] = cm_recall
     eval_log['cm_precision'] = cm_precision
 
-    model_name = args.out_path.split('/')[-1]
-    log_dir = time.strftime("%Y%m%d-%H%M%S") + '_' + model_name
-    os.mkdir('./logs/'+ log_dir)
-    with open(log_dir+"/eval_log.pt", 'wb') as f:
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    with open(args.out_path+timestamp+'_evaluation.pt', 'wb') as f:
         torch.save(eval_log, f)
 
     cm_sum = cm_precision + cm_recall
     cm_sum[cm_sum==0] = 1 # just to avoid division by 0
     cm_f1 = (cm_precision*cm_recall)/cm_sum
     cm = np.round(cm_f1, 2)
-    disp = ConfusionMatrixDisplay(cm, display_labels=label_list).plot(xticks_rotation='vertical')
+    disp = ConfusionMatrixDisplay(cm, display_labels=splits['label_list']).plot(xticks_rotation='vertical')
     fig = disp.figure_
 
-    disp.ax_.set_title(model_name, {'fontsize': 20})
+    disp.ax_.set_title(timestamp, {'fontsize': 20})
     fig.set_figwidth(18)
     fig.set_figheight(18)
-    plt.show()
-    fig.savefig(f"./images/{model_name}-results.png", dpi=300, format="png")
+    fig.savefig(f"./images/{timestamp}_confmat.png", dpi=300, format="png")
 
 if __name__ == "__main__":
     main()
