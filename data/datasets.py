@@ -34,7 +34,6 @@ class TokenClassificationDataset(data.Dataset):
                 aligned_labels.append(-100)
             else:
                 aligned_labels.append(self.label_dict[labels[word_idx]])
-
         return aligned_labels
 
     def tokenize_and_add_data(self, sentences, labels):
