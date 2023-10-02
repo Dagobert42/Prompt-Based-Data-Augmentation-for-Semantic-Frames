@@ -1,11 +1,11 @@
 import re
 
 
-def get_descriptions(entities, descriptions):
+def get_descriptions(entity_set, entity_dict):
     description_text = """"""
-    for l in set(entities):
+    for l in set(entity_set):
         if l != "null":
-            description_text += l + " : " + descriptions[l] + ",\n"
+            description_text += l + " : " + entity_dict[l] + ",\n"
             
     return description_text
 
@@ -127,7 +127,7 @@ def count_sentence_appearance(all_labels, label_list):
 
 
 def extract_augmentations(responses, label_list):
-    p = 'Example [0-9]\:\s'
+    p = 'Example \b([0-9]|[1-9][0-9])\b\:\s'
     aug_sentences = []
     aug_labels = []
     for response in responses:
