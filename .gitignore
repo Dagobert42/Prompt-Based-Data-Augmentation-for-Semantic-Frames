@@ -6,3 +6,5 @@ tb_logs
 relation_extractions
 logs
 augmentations
+images
+models
